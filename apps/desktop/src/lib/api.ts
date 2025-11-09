@@ -16,6 +16,7 @@ export async function addMagnet(magnet: string, savepath = ".", sequential = tru
   })
   const r = await fetch(`${BASE}/add`, { method: "POST", body })
   if (!r.ok) throw new Error("add failed")
+    console.log(r)
   return r.json() as Promise<{ ok: boolean; hash: string }>
 }
 

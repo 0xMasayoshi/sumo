@@ -4,13 +4,26 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { addMagnet, listFiles, listTorrents, type Torrent } from "./lib/api"
 import { Player } from "./components/Player"
+import { homeDir, join } from "@tauri-apps/api/path"
 
 export default function App() {
   const [magnet, setMagnet] = useState("")
   const [torrents, setTorrents] = useState<Torrent[]>([])
   const [selectedHash, setSelectedHash] = useState<string | null>(null)
   const [videoPath, setVideoPath] = useState<string | null>(null)
+  const [downloadDir, setDownloadDir] = useState<string>("")
   const polling = useRef<number | null>(null)
+
+    // resolve download dir at runtime using Tauri path API
+  useEffect(() => {
+    async function resolveDir() {
+      const home = await homeDir()
+      const dir = await join(home, "Documents", "sumo")
+      setDownloadDir(dir)
+    }
+    resolveDir()
+  }, [])
+
 
   // supported video formats
   const supportedExtensions = useMemo(
@@ -33,7 +46,7 @@ export default function App() {
 
   async function onAdd() {
     if (!magnet.trim()) return
-    const { hash } = await addMagnet(magnet.trim(), ".", true)
+    const { hash } = await addMagnet(magnet.trim(), downloadDir, true)
     setSelectedHash(hash)
     setMagnet("")
     // try to find first video soon after adding
@@ -41,14 +54,17 @@ export default function App() {
   }
 
   async function selectFirstVideo(hash: string | null = selectedHash) {
+    console.log('hash', hash)
     if (!hash) return
     try {
       const files = await listFiles(hash)
+      console.log('files', files)
       const video = files.find(f => {
         const lower = f.path.toLowerCase()
         return supportedExtensions.some(ext => lower.endsWith(ext))
       })
       if (video) setVideoPath(video.path)
+      if (video) console.log('found!')
     } catch {}
   }
 
