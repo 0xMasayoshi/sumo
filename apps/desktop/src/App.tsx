@@ -1,30 +1,104 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
+import { addMagnet, listFiles, listTorrents, type Torrent } from "./lib/api"
+import { Player } from "./components/Player"
 
 export default function App() {
-  const [hash, setHash] = useState<string>("");
+  const [magnet, setMagnet] = useState("")
+  const [torrents, setTorrents] = useState<Torrent[]>([])
+  const [selectedHash, setSelectedHash] = useState<string | null>(null)
+  const [videoPath, setVideoPath] = useState<string | null>(null)
+  const polling = useRef<number | null>(null)
 
-  async function addMagnet(magnet: string, savepath: string) {
-    const form = new URLSearchParams({
-      magnet, savepath, sequential: "1", firstlast: "1"
-    });
-    const r = await fetch("http://127.0.0.1:5040/api/add", { method: "POST", body: form });
-    const j = await r.json();
-    setHash(j.hash);
+  // supported video formats
+  const supportedExtensions = useMemo(
+    () => [".mp4", ".mkv", ".webm", ".mov", ".avi", ".flv", ".m4v"],
+    []
+  )
+
+  // poll torrents every 1.5s
+  useEffect(() => {
+    const tick = async () => {
+      try {
+        const t = await listTorrents()
+        setTorrents(t)
+      } catch {}
+    }
+    tick()
+    polling.current = window.setInterval(tick, 1500)
+    return () => { if (polling.current) clearInterval(polling.current) }
+  }, [])
+
+  async function onAdd() {
+    if (!magnet.trim()) return
+    const { hash } = await addMagnet(magnet.trim(), ".", true)
+    setSelectedHash(hash)
+    setMagnet("")
+    // try to find first video soon after adding
+    setTimeout(selectFirstVideo, 1500, hash)
   }
 
+  async function selectFirstVideo(hash: string | null = selectedHash) {
+    if (!hash) return
+    try {
+      const files = await listFiles(hash)
+      const video = files.find(f => {
+        const lower = f.path.toLowerCase()
+        return supportedExtensions.some(ext => lower.endsWith(ext))
+      })
+      if (video) setVideoPath(video.path)
+    } catch {}
+  }
+
+  const selected = useMemo(
+    () => torrents.find(t => t.hash === selectedHash) || null,
+    [torrents, selectedHash]
+  )
+
   return (
-    <div style={{ padding: 16 }}>
-      <h1>Sumo</h1>
-      <form onSubmit={e => {
-        e.preventDefault();
-        const magnet = (e.currentTarget as any).magnet.value;
-        addMagnet(magnet, (e.currentTarget as any).save.value);
-      }}>
-        <input name="magnet" placeholder="magnet:..." style={{ width: 500 }} />
-        <input name="save" placeholder="/path/to/save" style={{ width: 240, marginLeft: 8 }} />
-        <button type="submit" style={{ marginLeft: 8 }}>Add</button>
-      </form>
-      {hash && <p>Added: {hash}</p>}
+    <div className="h-screen grid grid-cols-[240px_1fr] grid-rows-[44px_1fr]">
+      {/* Topbar */}
+      <div className="col-span-2 row-[1] flex items-center gap-2 px-3 border-b" data-tauri-drag-region>
+        <div className="text-sm font-medium">Sumo</div>
+        <Separator orientation="vertical" className="mx-2 h-5" />
+        <Input
+          placeholder="Paste magnet link…"
+          value={magnet}
+          onChange={e => setMagnet(e.target.value)}
+          className="w-[520px]"
+        />
+        <Button size="sm" onClick={onAdd}>Add</Button>
+        <div className="ml-auto text-xs text-muted-foreground">
+          {selected ? `${(selected.progress * 100).toFixed(1)}%` : ""}
+        </div>
+      </div>
+
+      {/* Sidebar */}
+      <aside className="row-[2] col-[1] border-r p-2 space-y-1">
+        {torrents.map(t => (
+          <Button
+            key={t.hash}
+            variant={t.hash === selectedHash ? "secondary" : "ghost"}
+            className="w-full justify-start"
+            onClick={() => { setSelectedHash(t.hash); setVideoPath(null); selectFirstVideo(t.hash) }}
+            title={t.name}
+          >
+            <span className="truncate">{t.name || t.hash}</span>
+          </Button>
+        ))}
+      </aside>
+
+      {/* Content */}
+      <main className="row-[2] col-[2] p-3 overflow-auto">
+        <div className="mb-2 text-sm">
+          {selected ? <span className="opacity-75">{selected.name}</span> : "No torrent selected"}
+        </div>
+        <div className="h-[520px]">
+          <Player filePath={videoPath} />
+        </div>
+      </main>
     </div>
-  );
+  )
 }

@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "sumo.sumo.sumo",
   "build": {
-    "beforeDevCommand": "",
+    "beforeDevCommand": "pnpm vite",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "",
+    "beforeBuildCommand": "pnpm vitebuild",
     "frontendDist": "../dist"
   },
   "app": {
@@ -18,7 +18,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' http://127.0.0.1:5040 blob: data: 'unsafe-inline' 'unsafe-eval'"
     }
   },
   "bundle": {
