@@ -85,11 +85,38 @@ static std::string torrent_status_json(const lt::torrent_status& st) {
   return s;
 }
 
+static bool is_allowed_origin(const std::string& origin) {
+  return origin == "http://localhost:1420" || origin == "tauri://localhost";
+}
+
 int main(int argc, char** argv) {
   auto cfg = parse_args(argc, argv);
   init_session(cfg);
 
   httplib::Server svr;
+
+  // ---- CORS (allow Tauri dev/prod) ----
+  svr.set_pre_routing_handler([](const httplib::Request& req, httplib::Response& res) {
+    auto it = req.headers.find("Origin");
+    if (it != req.headers.end() && is_allowed_origin(it->second)) {
+      const std::string& origin = it->second;
+      res.set_header("Access-Control-Allow-Origin", origin);
+      res.set_header("Vary", "Origin");
+      res.set_header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+      res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+      // If you ever need cookies/auth with fetch(..., { credentials: 'include' }):
+      // res.set_header("Access-Control-Allow-Credentials", "true");
+    }
+
+    if (req.method == "OPTIONS") {
+      // Preflight response
+      res.status = 204;
+      res.set_header("Access-Control-Max-Age", "600"); // cache preflight for 10 minutes
+      return httplib::Server::HandlerResponse::Handled;
+    }
+
+    return httplib::Server::HandlerResponse::Unhandled;
+  });
 
   // POST /api/add  magnet=...&savepath=...&sequential=0|1
   svr.Post("/api/add", [](const httplib::Request& req, httplib::Response& res) {
